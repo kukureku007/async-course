@@ -5,11 +5,11 @@ import random
 import itertools
 
 SPEED = 5
+# 0 for disable borders
 BORDERS = 1
 TIC_TIMEOUT = 0.1
 STARS = '+*.:'
-STARS_NUM = 50
-SAFE_ZONE = 3
+STARS_NUM = 100
 SPACESHIP_FRAMES = (
     'lesson1/frames/rocket_frame_1.txt',
     'lesson1/frames/rocket_frame_2.txt'
@@ -150,6 +150,7 @@ async def animate_spaceship(canvas, start_row, start_column):
             max_column-frame_columns-BORDERS
         )
 
+        # Анимация происходит через каждые два кадра
         if frames_count >= 2:
             frame = next(frames_cycle)
             frames_count = 0
@@ -222,10 +223,12 @@ def draw(canvas):
     coroutines = []
 
     for _ in range(STARS_NUM):
-        row = random.randint(SAFE_ZONE, max_row-SAFE_ZONE)
-        column = random.randint(SAFE_ZONE, max_column-SAFE_ZONE)
-        star = random.choice(STARS)
-        coroutines.append(blink(canvas, row, column, star))
+        coroutines.append(blink(
+            canvas,
+            random.randint(BORDERS, max_row-1-BORDERS),
+            random.randint(BORDERS, max_column-1-BORDERS),
+            random.choice(STARS)
+        ))
 
     coroutines.append(fire(canvas, max_row // 2, max_column // 2))
     coroutines.append(animate_spaceship(canvas, max_row // 2, max_column // 2))
