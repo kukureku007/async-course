@@ -21,6 +21,16 @@ UP_KEY_CODE = 259
 DOWN_KEY_CODE = 258
 
 
+def cycle_with_repeat(iterable, repeat=1):
+    """
+    generator that returns items from itertools.cycle repeatedly
+    e.g. [a,b,c], repeat=2 -> a,a,b,b,c,c,a,a,b,...
+    """
+    for item in itertools.cycle(iterable):
+        for _ in range(repeat):
+            yield item
+
+
 def read_controls(canvas, speed=1):
     """Read keys pressed and returns tuple witl controls state."""
 
@@ -124,19 +134,15 @@ def validate_columns(columns, columns_min, columns_max):
     return columns
 
 
-async def animate_spaceship(canvas, start_row, start_column):
-    frames = get_frames(SPACESHIP_FRAMES)
+async def animate_spaceship(canvas, start_row, start_column, frames):
     frame_rows, frame_columns = get_frame_size(frames[0])
     max_row, max_column = canvas.getmaxyx()
 
     current_row = start_row - (frame_rows // 2)
     current_column = start_column - (frame_columns // 2)
 
-    frames_cycle = itertools.cycle(frames)
-    frame = next(frames_cycle)
-    frames_count = 0
-
-    while True:
+    for frame in cycle_with_repeat(frames, repeat=2):
+        # repeat - speed of ship animation
         rows_direction, columns_direction, _ = read_controls(canvas, SPEED)
 
         current_row = validate_rows(
@@ -150,15 +156,9 @@ async def animate_spaceship(canvas, start_row, start_column):
             max_column-frame_columns-BORDERS
         )
 
-        # Анимация происходит через каждые два кадра
-        if frames_count >= 2:
-            frame = next(frames_cycle)
-            frames_count = 0
-
         draw_frame(canvas, current_row, current_column, frame)
         await asyncio.sleep(0)
         draw_frame(canvas, current_row, current_column, frame, negative=True)
-        frames_count += 1
 
 
 async def fire(canvas, start_row, start_column,
@@ -231,7 +231,13 @@ def draw(canvas):
         ))
 
     coroutines.append(fire(canvas, max_row // 2, max_column // 2))
-    coroutines.append(animate_spaceship(canvas, max_row // 2, max_column // 2))
+    frames = get_frames(SPACESHIP_FRAMES)
+    coroutines.append(animate_spaceship(
+        canvas,
+        max_row // 2,
+        max_column // 2,
+        frames
+    ))
 
     while True:
         for coroutine in coroutines.copy():
