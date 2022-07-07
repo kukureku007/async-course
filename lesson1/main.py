@@ -48,7 +48,7 @@ def cycle_with_repeat(iterable, repeat=1):
             yield item
 
 
-def read_controls(canvas, row_speed, column_speed, speed=1):
+def read_controls(canvas, row_speed, column_speed):
     """Read keys pressed and returns tuple witl controls state."""
 
     rows_direction = columns_direction = 0
@@ -163,56 +163,8 @@ async def asleep(tics=1):
         await asyncio.sleep(0)
 
 
-async def animate_spaceship(canvas, start_row, start_column, frames):
-    frame_rows, frame_columns = get_frame_size(frames[0])
-    max_row, max_column = canvas.getmaxyx()
-
-    current_row = start_row - (frame_rows // 2)
-    current_column = start_column - (frame_columns // 2)
-
-    rows_speed = columns_speed = 0
-
-    for frame in cycle_with_repeat(frames, repeat=2):
-        # repeat - speed of ship animation
-        rows_speed, columns_speed, _ = read_controls(
-            canvas, rows_speed, columns_speed, SPEED
-        )
-
-        current_row = validate_rows(
-            current_row+rows_speed,
-            BORDERS,
-            max_row-frame_rows-BORDERS
-        )
-        current_column = validate_columns(
-            current_column+columns_speed,
-            BORDERS,
-            max_column-frame_columns-BORDERS
-        )
-
-        draw_frame(canvas, current_row, current_column, frame)
-        await asyncio.sleep(0)
-        draw_frame(canvas, current_row, current_column, frame, negative=True)
-
-
-async def fly_garbage(canvas, column, garbage_frame, speed=0.5):
-    """Animate garbage, flying from top to bottom.
-    Сolumn position will stay same, as specified on start."""
-    rows_number, columns_number = canvas.getmaxyx()
-
-    column = max(column, BORDERS)
-    column = min(column, columns_number - 1 - BORDERS)
-
-    row = BORDERS
-
-    while row < rows_number-1:
-        draw_frame(canvas, row, column, garbage_frame)
-        await asyncio.sleep(0)
-        draw_frame(canvas, row, column, garbage_frame, negative=True)
-        row += speed
-
-
 async def fire(canvas, start_row, start_column,
-               rows_speed=-0.3, columns_speed=0):
+               rows_speed=-1, columns_speed=0):
     """Display animation of gun shot, direction and speed can be specified."""
 
     row, column = start_row, start_column
@@ -240,6 +192,59 @@ async def fire(canvas, start_row, start_column,
         canvas.addstr(round(row), round(column), ' ')
         row += rows_speed
         column += columns_speed
+
+
+async def animate_spaceship(coroutines: List, canvas, start_row, start_column, frames):
+    frame_rows, frame_columns = get_frame_size(frames[0])
+    max_row, max_column = canvas.getmaxyx()
+
+    current_row = start_row - (frame_rows // 2)
+    current_column = start_column - (frame_columns // 2)
+
+    rows_speed = columns_speed = 0
+
+    for frame in cycle_with_repeat(frames, repeat=2):
+        # repeat - speed of ship animation
+        rows_speed, columns_speed, action_fire = read_controls(
+            canvas, rows_speed, columns_speed
+        )
+
+        current_row = validate_rows(
+            current_row+rows_speed,
+            BORDERS,
+            max_row-frame_rows-BORDERS
+        )
+        current_column = validate_columns(
+            current_column+columns_speed,
+            BORDERS,
+            max_column-frame_columns-BORDERS
+        )
+
+        draw_frame(canvas, current_row, current_column, frame)
+        if action_fire:
+            coroutines.append(
+                fire(canvas, current_row, current_column + frame_columns // 2)
+            )
+
+        await asyncio.sleep(0)
+        draw_frame(canvas, current_row, current_column, frame, negative=True)
+
+
+async def fly_garbage(canvas, column, garbage_frame, speed=0.5):
+    """Animate garbage, flying from top to bottom.
+    Сolumn position will stay same, as specified on start."""
+    rows_number, columns_number = canvas.getmaxyx()
+
+    column = max(column, BORDERS)
+    column = min(column, columns_number - 1 - BORDERS)
+
+    row = BORDERS
+
+    while row < rows_number-1:
+        draw_frame(canvas, row, column, garbage_frame)
+        await asyncio.sleep(0)
+        draw_frame(canvas, row, column, garbage_frame, negative=True)
+        row += speed
 
 
 async def blink(canvas, row, column, symbol='*'):
@@ -297,6 +302,7 @@ def draw(canvas):
     )
 
     coroutines.append(animate_spaceship(
+        coroutines,
         canvas,
         max_row // 2,
         max_column // 2,
