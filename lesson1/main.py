@@ -1,19 +1,34 @@
+from typing import List
+from os import listdir
 import asyncio
-import time
 import curses
-import random
-import itertools
+from itertools import cycle
+from random import choice, randint, uniform
+from time import sleep
 
 SPEED = 5
 # 0 for disable borders
-BORDERS = 1
+BORDERS = 0
 TIC_TIMEOUT = 0.1
 STARS = '+*.:'
 STARS_NUM = 100
-SPACESHIP_FRAMES = (
-    'lesson1/frames/rocket_frame_1.txt',
-    'lesson1/frames/rocket_frame_2.txt'
-)
+# через сколько тиков должен появляться новый мусор
+NEW_GARBAGE_TICS_TIMEOUT = 10
+MIN_GARBAGE_SPEED = 0.3
+MAX_GARBAGE_SPEED = 1
+
+FRAMES_DIR = 'lesson1/frames'
+GARBAGE_FRAMES = [
+    f'{FRAMES_DIR}/garbage/{name}' for name in listdir(
+        f'{FRAMES_DIR}/garbage/'
+    )
+]
+SPACESHIP_FRAMES = [
+    f'{FRAMES_DIR}/spaceship/{name}' for name in listdir(
+        f'{FRAMES_DIR}/spaceship/'
+    )
+]
+
 SPACE_KEY_CODE = 32
 LEFT_KEY_CODE = 260
 RIGHT_KEY_CODE = 261
@@ -26,7 +41,7 @@ def cycle_with_repeat(iterable, repeat=1):
     generator that returns items from itertools.cycle repeatedly
     e.g. [a,b,c], repeat=2 -> a,a,b,b,c,c,a,a,b,...
     """
-    for item in itertools.cycle(iterable):
+    for item in cycle(iterable):
         for _ in range(repeat):
             yield item
 
@@ -134,6 +149,11 @@ def validate_columns(columns, columns_min, columns_max):
     return columns
 
 
+async def asleep(tics=1):
+    for _ in range(tics):
+        await asyncio.sleep(0)
+
+
 async def animate_spaceship(canvas, start_row, start_column, frames):
     frame_rows, frame_columns = get_frame_size(frames[0])
     max_row, max_column = canvas.getmaxyx()
@@ -161,6 +181,22 @@ async def animate_spaceship(canvas, start_row, start_column, frames):
         draw_frame(canvas, current_row, current_column, frame, negative=True)
 
 
+async def fly_garbage(canvas, column, garbage_frame, speed=0.5):
+    """Animate garbage, flying from top to bottom. Сolumn position will stay same, as specified on start."""
+    rows_number, columns_number = canvas.getmaxyx()
+
+    column = max(column, BORDERS)
+    column = min(column, columns_number - 1 - BORDERS)
+
+    row = BORDERS
+
+    while row < rows_number-1:
+        draw_frame(canvas, row, column, garbage_frame)
+        await asyncio.sleep(0)
+        draw_frame(canvas, row, column, garbage_frame, negative=True)
+        row += speed
+
+
 async def fire(canvas, start_row, start_column,
                rows_speed=-0.3, columns_speed=0):
     """Display animation of gun shot, direction and speed can be specified."""
@@ -184,7 +220,7 @@ async def fire(canvas, start_row, start_column,
 
     curses.beep()
 
-    while 1 < row < max_row and 1 < column < max_column:
+    while BORDERS < row < max_row and BORDERS < column < max_column:
         canvas.addstr(round(row), round(column), symbol)
         await asyncio.sleep(0)
         canvas.addstr(round(row), round(column), ' ')
@@ -193,24 +229,33 @@ async def fire(canvas, start_row, start_column,
 
 
 async def blink(canvas, row, column, symbol='*'):
-    for _ in range(random.randint(0, 25)):
-        await asyncio.sleep(0)
+    await asleep(randint(0, 25))
     while True:
         canvas.addstr(row, column, symbol, curses.A_DIM)
-        for _ in range(20):
-            await asyncio.sleep(0)
+        await asleep(20)
 
         canvas.addstr(row, column, symbol)
-        for _ in range(3):
-            await asyncio.sleep(0)
+        await asleep(3)
 
         canvas.addstr(row, column, symbol, curses.A_BOLD)
-        for _ in range(5):
-            await asyncio.sleep(0)
+        await asleep(5)
 
         canvas.addstr(row, column, symbol)
-        for _ in range(3):
+        await asleep(3)
+
+
+async def fill_orbit_with_garbage(
+    coroutines: List, canvas, garbage_frames, max_column
+):
+    while True:
+        for _ in range(NEW_GARBAGE_TICS_TIMEOUT):
             await asyncio.sleep(0)
+        coroutines.append(fly_garbage(
+                canvas,
+                column=randint(BORDERS, max_column-1-BORDERS),
+                garbage_frame=choice(garbage_frames),
+                speed=uniform(MIN_GARBAGE_SPEED, MAX_GARBAGE_SPEED)
+            ))
 
 
 def draw(canvas):
@@ -225,18 +270,23 @@ def draw(canvas):
     for _ in range(STARS_NUM):
         coroutines.append(blink(
             canvas,
-            random.randint(BORDERS, max_row-1-BORDERS),
-            random.randint(BORDERS, max_column-1-BORDERS),
-            random.choice(STARS)
+            randint(BORDERS, max_row-1-BORDERS),
+            randint(BORDERS, max_column-1-BORDERS),
+            choice(STARS)
         ))
 
-    coroutines.append(fire(canvas, max_row // 2, max_column // 2))
-    frames = get_frames(SPACESHIP_FRAMES)
+    # coroutines.append(fire(canvas, max_row // 2, max_column // 2))
+    garbage_frames = get_frames(GARBAGE_FRAMES)
+
+    coroutines.append(
+        fill_orbit_with_garbage(coroutines, canvas, garbage_frames, max_column)
+    )
+
     coroutines.append(animate_spaceship(
         canvas,
         max_row // 2,
         max_column // 2,
-        frames
+        get_frames(SPACESHIP_FRAMES)
     ))
 
     while True:
@@ -247,7 +297,7 @@ def draw(canvas):
                 coroutines.remove(coroutine)
         canvas.refresh()
 
-        time.sleep(TIC_TIMEOUT)
+        sleep(TIC_TIMEOUT)
 
 
 if __name__ == '__main__':
