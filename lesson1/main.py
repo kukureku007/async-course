@@ -6,6 +6,8 @@ from itertools import cycle
 from random import choice, randint, uniform
 from time import sleep
 
+from phisics import update_speed
+
 SPEED = 5
 # 0 for disable borders
 BORDERS = 0
@@ -46,7 +48,7 @@ def cycle_with_repeat(iterable, repeat=1):
             yield item
 
 
-def read_controls(canvas, speed=1):
+def read_controls(canvas, row_speed, column_speed, speed=1):
     """Read keys pressed and returns tuple witl controls state."""
 
     rows_direction = columns_direction = 0
@@ -60,21 +62,28 @@ def read_controls(canvas, speed=1):
             break
 
         if pressed_key_code == UP_KEY_CODE:
-            rows_direction = -speed
+            rows_direction = -1
 
         if pressed_key_code == DOWN_KEY_CODE:
-            rows_direction = speed
+            rows_direction = 1
 
         if pressed_key_code == RIGHT_KEY_CODE:
-            columns_direction = speed
+            columns_direction = 1
 
         if pressed_key_code == LEFT_KEY_CODE:
-            columns_direction = -speed
+            columns_direction = -1
 
         if pressed_key_code == SPACE_KEY_CODE:
             space_pressed = True
 
-    return rows_direction, columns_direction, space_pressed
+    return (
+        *update_speed(
+            row_speed, column_speed,
+            rows_direction, columns_direction,
+            row_speed_limit=SPEED,
+            column_speed_limit=SPEED
+        ),
+        space_pressed)
 
 
 def draw_frame(canvas, start_row, start_column, text, negative=False):
@@ -161,17 +170,21 @@ async def animate_spaceship(canvas, start_row, start_column, frames):
     current_row = start_row - (frame_rows // 2)
     current_column = start_column - (frame_columns // 2)
 
+    rows_speed = columns_speed = 0
+
     for frame in cycle_with_repeat(frames, repeat=2):
         # repeat - speed of ship animation
-        rows_direction, columns_direction, _ = read_controls(canvas, SPEED)
+        rows_speed, columns_speed, _ = read_controls(
+            canvas, rows_speed, columns_speed, SPEED
+        )
 
         current_row = validate_rows(
-            current_row+rows_direction,
+            current_row+rows_speed,
             BORDERS,
             max_row-frame_rows-BORDERS
         )
         current_column = validate_columns(
-            current_column+columns_direction,
+            current_column+columns_speed,
             BORDERS,
             max_column-frame_columns-BORDERS
         )
@@ -182,7 +195,8 @@ async def animate_spaceship(canvas, start_row, start_column, frames):
 
 
 async def fly_garbage(canvas, column, garbage_frame, speed=0.5):
-    """Animate garbage, flying from top to bottom. Сolumn position will stay same, as specified on start."""
+    """Animate garbage, flying from top to bottom.
+    Сolumn position will stay same, as specified on start."""
     rows_number, columns_number = canvas.getmaxyx()
 
     column = max(column, BORDERS)
