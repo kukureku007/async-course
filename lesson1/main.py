@@ -4,11 +4,9 @@ from os import listdir
 import asyncio
 import curses
 from random import choice, randint, uniform
-from time import sleep
 
 from obstacles import Obstacle, show_obstacles
 from utils import (
-                  asleep,
                   cycle_with_repeat,
                   validate_value,
                   get_garbage_delay_tics
@@ -16,33 +14,22 @@ from utils import (
 from curses_tools import get_frame_size, read_controls, draw_frame, get_frames
 from explosion import explode
 
-# immortality
-GOD_MODE = False
-# show_obstacles and custom start year
-DEBUG = False
-DEBUG_YEAR = 2018
-SPEED = 5
-# 0 for disable borders
-BORDERS = 0
-TIC_TIMEOUT = 0.1
-STARS = '+*.:'
-STARS_NUM = 100
+from config import (
+    GOD_MODE,
+    DEBUG,
+    DEBUG_YEAR,
+    SPEED,
+    BORDERS,
+    TIC_TIMEOUT,
+    STARS,
+    STARS_NUM,
+    PHRASES,
+    MIN_GARBAGE_SPEED,
+    MAX_GARBAGE_SPEED,
+    FRAMES_DIR
+)
 
-PHRASES = {
-    # Только на английском, Repl.it ломается на кириллице
-    1957: "First Sputnik",
-    1961: "Gagarin flew!",
-    1969: "Armstrong got on the moon!",
-    1971: "First orbital space station Salute-1",
-    1981: "Flight of the Shuttle Columbia",
-    1998: 'ISS start building',
-    2011: 'Messenger launch to Mercury',
-    2020: "Take the plasma gun! Shoot the garbage!",
-}
 
-MIN_GARBAGE_SPEED = 0.2
-MAX_GARBAGE_SPEED = 0.7
-FRAMES_DIR = 'lesson1/frames'
 GARBAGE_FRAMES = [
     f'{FRAMES_DIR}/garbage/{name}' for name in listdir(
         f'{FRAMES_DIR}/garbage/'
@@ -61,12 +48,13 @@ obstacles: List[Obstacle] = []
 obstacles_in_last_collisions: List[Obstacle] = []
 obstacles_in_last_collisions: set = set()
 year = DEBUG_YEAR if DEBUG else 1957
+loop = asyncio.get_event_loop()
 
 
 async def year_count():
     global year
     while True:
-        await asleep(15)
+        await asyncio.sleep(15 * TIC_TIMEOUT)
         year += 1
 
 
@@ -77,10 +65,10 @@ async def fire(canvas, start_row, start_column,
     row, column = start_row, start_column
 
     canvas.addstr(round(row), round(column), '*')
-    await asyncio.sleep(0)
+    await asyncio.sleep(TIC_TIMEOUT)
 
     canvas.addstr(round(row), round(column), 'O')
-    await asyncio.sleep(0)
+    await asyncio.sleep(TIC_TIMEOUT)
     canvas.addstr(round(row), round(column), ' ')
 
     row += rows_speed
@@ -95,7 +83,7 @@ async def fire(canvas, start_row, start_column,
 
     while BORDERS < row < max_row and BORDERS < column < max_column:
         canvas.addstr(round(row), round(column), symbol)
-        await asyncio.sleep(0)
+        await asyncio.sleep(TIC_TIMEOUT)
         canvas.addstr(round(row), round(column), ' ')
         row += rows_speed
         column += columns_speed
@@ -118,7 +106,7 @@ async def game_over(canvas):
             (max_column - frame_columns) // 2,
             *GAME_OVER_FRAME
         )
-        await asyncio.sleep(0)
+        await asyncio.sleep(0.1)
 
 
 async def animate_spaceship(
@@ -133,7 +121,6 @@ async def animate_spaceship(
     rows_speed = columns_speed = 0
 
     for frame in cycle_with_repeat(frames, repeat=2):
-        # repeat - speed of ship animation
         rows_speed, columns_speed, action_fire = read_controls(
             canvas, rows_speed, columns_speed, SPEED
         )
@@ -150,11 +137,11 @@ async def animate_spaceship(
         )
 
         draw_frame(canvas, current_row, current_column, frame)
-        if action_fire and year > 2019:
-            coroutines.append(
+        if action_fire and (year > 2019 or GOD_MODE):
+            loop.create_task(
                 fire(canvas, current_row, current_column + frame_columns // 2)
             )
-        await asyncio.sleep(0)
+        await asyncio.sleep(TIC_TIMEOUT)
         draw_frame(canvas, current_row, current_column, frame, negative=True)
 
         for obstacle in obstacles:
@@ -168,7 +155,7 @@ async def animate_spaceship(
                     current_row + frame_rows // 2,
                     current_column + frame_columns // 2
                 )
-                coroutines.append(game_over(canvas))
+                loop.create_task(game_over(canvas))
                 return
 
 
@@ -196,7 +183,7 @@ async def fly_garbage(canvas, column, garbage_frame, speed=0.5):
 
     while row < rows_number-1:
         draw_frame(canvas, row, column, garbage_frame)
-        await asyncio.sleep(0)
+        await asyncio.sleep(TIC_TIMEOUT)
         draw_frame(canvas, row, column, garbage_frame, negative=True)
         row += speed
         if obstacle in obstacles_in_last_collisions:
@@ -212,19 +199,19 @@ async def fly_garbage(canvas, column, garbage_frame, speed=0.5):
 
 
 async def blink(canvas, row, column, symbol='*'):
-    await asleep(randint(0, 25))
+    await asyncio.sleep(randint(0, 25) * TIC_TIMEOUT)
     while True:
         canvas.addstr(row, column, symbol, curses.A_DIM)
-        await asleep(20)
+        await asyncio.sleep(20 * TIC_TIMEOUT)
 
         canvas.addstr(row, column, symbol)
-        await asleep(3)
+        await asyncio.sleep(3 * TIC_TIMEOUT)
 
         canvas.addstr(row, column, symbol, curses.A_BOLD)
-        await asleep(5)
+        await asyncio.sleep(5 * TIC_TIMEOUT)
 
         canvas.addstr(row, column, symbol)
-        await asleep(3)
+        await asyncio.sleep(3 * TIC_TIMEOUT)
 
 
 async def fill_orbit_with_garbage(
@@ -233,11 +220,10 @@ async def fill_orbit_with_garbage(
     while True:
         garbage_delay = get_garbage_delay_tics(year)
         if not garbage_delay:
-            await asyncio.sleep(0)
+            await asyncio.sleep(TIC_TIMEOUT)
             continue
-        for _ in range(garbage_delay):
-            await asyncio.sleep(0)
-        coroutines.append(fly_garbage(
+        await asyncio.sleep(TIC_TIMEOUT * garbage_delay)
+        loop.create_task(fly_garbage(
                 canvas,
                 column=randint(BORDERS, max_column-1-BORDERS),
                 garbage_frame=choice(garbage_frames),
@@ -258,7 +244,13 @@ async def print_info(canvas):
         if DEBUG:
             canvas.border()
         canvas.refresh()
-        await asyncio.sleep(0)
+        await asyncio.sleep(TIC_TIMEOUT)
+
+
+async def canvas_refresh(canvas):
+    while True:
+        canvas.refresh()
+        await asyncio.sleep(TIC_TIMEOUT)
 
 
 def draw(canvas):
@@ -269,30 +261,31 @@ def draw(canvas):
     max_row, max_column = canvas.getmaxyx()
 
     for _ in range(STARS_NUM):
-        coroutines.append(blink(
+        loop.create_task(blink(
             canvas,
             randint(BORDERS, max_row-1-BORDERS),
             randint(BORDERS, max_column-1-BORDERS),
             choice(STARS)
         ))
 
-    coroutines.append(
+    loop.create_task(
         fill_orbit_with_garbage(
             canvas,
             get_frames(GARBAGE_FRAMES),
             max_column)
     )
-    coroutines.append(animate_spaceship(
+
+    loop.create_task(animate_spaceship(
         canvas,
         max_row // 2,
         max_column // 2,
         get_frames(SPACESHIP_FRAMES)
     ))
-    coroutines.append(year_count())
+    loop.create_task(year_count())
 
     max_len_phrase = max([len(x) for x in PHRASES.values()])
 
-    coroutines.append(print_info(canvas.derwin(
+    loop.create_task(print_info(canvas.derwin(
         5,
         max_len_phrase+2,
         max_row-5,
@@ -300,18 +293,11 @@ def draw(canvas):
     )))
 
     if DEBUG:
-        coroutines.append(show_obstacles(
+        loop.create_task(show_obstacles(
             canvas, obstacles
         ))
-    while True:
-        for coroutine in coroutines.copy():
-            try:
-                coroutine.send(None)
-            except StopIteration:
-                coroutines.remove(coroutine)
-        canvas.refresh()
-
-        sleep(TIC_TIMEOUT)
+    loop.create_task(canvas_refresh(canvas))
+    loop.run_forever()
 
 
 if __name__ == '__main__':

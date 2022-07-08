@@ -2,6 +2,8 @@ import asyncio
 import curses
 from curses_tools import draw_frame, get_frame_size
 
+from config import TIC_TIMEOUT
+
 EXPLOSION_FRAMES = [
     """\
            (_)
@@ -39,6 +41,6 @@ async def explode(canvas, center_row, center_column):
 
         draw_frame(canvas, corner_row, corner_column, frame)
 
-        await asyncio.sleep(0)
+        await asyncio.sleep(TIC_TIMEOUT)
         draw_frame(canvas, corner_row, corner_column, frame, negative=True)
-        await asyncio.sleep(0)
+        await asyncio.sleep(TIC_TIMEOUT)
