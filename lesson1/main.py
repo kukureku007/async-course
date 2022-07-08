@@ -33,6 +33,7 @@ SPACESHIP_FRAMES = [
         f'{FRAMES_DIR}/spaceship/'
     )
 ]
+GAME_OVER_FRAME = get_frames((f'{FRAMES_DIR}/legends/gameover.txt',))
 
 coroutines = []
 obstacles: List[Obstacle] = []
@@ -79,6 +80,19 @@ async def fire(canvas, start_row, start_column,
                 return
 
 
+async def game_over(canvas):
+    frame_rows, frame_columns = get_frame_size(*GAME_OVER_FRAME)
+    max_row, max_column = canvas.getmaxyx()
+    while True:
+        draw_frame(
+            canvas,
+            (max_row - frame_rows) // 2,
+            (max_column - frame_columns) // 2,
+            *GAME_OVER_FRAME
+        )
+        await asyncio.sleep(0)
+
+
 async def animate_spaceship(
     canvas, start_row, start_column, frames
 ):
@@ -112,9 +126,22 @@ async def animate_spaceship(
             coroutines.append(
                 fire(canvas, current_row, current_column + frame_columns // 2)
             )
-
         await asyncio.sleep(0)
         draw_frame(canvas, current_row, current_column, frame, negative=True)
+
+        for obstacle in obstacles:
+            if obstacle.has_collision(
+                current_row, current_column,
+                frame_rows, frame_columns
+            ):
+                obstacles_in_last_collisions.add(obstacle)
+                await explode(
+                    canvas,
+                    current_row + frame_rows // 2,
+                    current_column + frame_columns // 2
+                )
+                coroutines.append(game_over(canvas))
+                return
 
 
 async def fly_garbage(canvas, column, garbage_frame, speed=0.5):
@@ -146,13 +173,13 @@ async def fly_garbage(canvas, column, garbage_frame, speed=0.5):
         row += speed
         if obstacle in obstacles_in_last_collisions:
             obstacles_in_last_collisions.remove(obstacle)
+            await explode(
+                canvas,
+                row + rows_size // 2,
+                column + columns_size // 2
+            )
             break
         obstacle.row = row
-    await explode(
-        canvas,
-        row + rows_size // 2,
-        column + columns_size // 2
-    )
     obstacles.remove(obstacle)
 
 
