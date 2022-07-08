@@ -16,8 +16,11 @@ from utils import (
 from curses_tools import get_frame_size, read_controls, draw_frame, get_frames
 from explosion import explode
 
-GOD_MODE = True
+# immortality
+GOD_MODE = False
+# show_obstacles and custom start year
 DEBUG = False
+DEBUG_YEAR = 2018
 SPEED = 5
 # 0 for disable borders
 BORDERS = 0
@@ -57,7 +60,7 @@ obstacles: List[Obstacle] = []
 
 obstacles_in_last_collisions: List[Obstacle] = []
 obstacles_in_last_collisions: set = set()
-year = 2010 if DEBUG else 1957
+year = DEBUG_YEAR if DEBUG else 1957
 
 
 async def year_count():
