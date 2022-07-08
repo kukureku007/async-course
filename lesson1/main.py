@@ -7,10 +7,16 @@ from random import choice, randint, uniform
 from time import sleep
 
 from obstacles import Obstacle, show_obstacles
-from utils import asleep, cycle_with_repeat, validate_value
+from utils import (
+                  asleep,
+                  cycle_with_repeat,
+                  validate_value,
+                  get_garbage_delay_tics
+                  )
 from curses_tools import get_frame_size, read_controls, draw_frame, get_frames
 from explosion import explode
 
+GOD_MODE = True
 DEBUG = False
 SPEED = 5
 # 0 for disable borders
@@ -18,10 +24,21 @@ BORDERS = 0
 TIC_TIMEOUT = 0.1
 STARS = '+*.:'
 STARS_NUM = 100
-# через сколько тиков должен появляться новый мусор
-NEW_GARBAGE_TICS_TIMEOUT = 10
-MIN_GARBAGE_SPEED = 0.3
-MAX_GARBAGE_SPEED = 1
+
+PHRASES = {
+    # Только на английском, Repl.it ломается на кириллице
+    1957: "First Sputnik",
+    1961: "Gagarin flew!",
+    1969: "Armstrong got on the moon!",
+    1971: "First orbital space station Salute-1",
+    1981: "Flight of the Shuttle Columbia",
+    1998: 'ISS start building',
+    2011: 'Messenger launch to Mercury',
+    2020: "Take the plasma gun! Shoot the garbage!",
+}
+
+MIN_GARBAGE_SPEED = 0.2
+MAX_GARBAGE_SPEED = 0.7
 FRAMES_DIR = 'lesson1/frames'
 GARBAGE_FRAMES = [
     f'{FRAMES_DIR}/garbage/{name}' for name in listdir(
@@ -40,10 +57,18 @@ obstacles: List[Obstacle] = []
 
 obstacles_in_last_collisions: List[Obstacle] = []
 obstacles_in_last_collisions: set = set()
+year = 2010 if DEBUG else 1957
+
+
+async def year_count():
+    global year
+    while True:
+        await asleep(15)
+        year += 1
 
 
 async def fire(canvas, start_row, start_column,
-               rows_speed=-1, columns_speed=0):
+               rows_speed=-2, columns_speed=0):
     """Display animation of gun shot, direction and speed can be specified."""
 
     row, column = start_row, start_column
@@ -122,7 +147,7 @@ async def animate_spaceship(
         )
 
         draw_frame(canvas, current_row, current_column, frame)
-        if action_fire:
+        if action_fire and year > 2019:
             coroutines.append(
                 fire(canvas, current_row, current_column + frame_columns // 2)
             )
@@ -133,7 +158,7 @@ async def animate_spaceship(
             if obstacle.has_collision(
                 current_row, current_column,
                 frame_rows, frame_columns
-            ):
+            ) and not GOD_MODE:
                 obstacles_in_last_collisions.add(obstacle)
                 await explode(
                     canvas,
@@ -203,7 +228,11 @@ async def fill_orbit_with_garbage(
     canvas, garbage_frames, max_column
 ):
     while True:
-        for _ in range(NEW_GARBAGE_TICS_TIMEOUT):
+        garbage_delay = get_garbage_delay_tics(year)
+        if not garbage_delay:
+            await asyncio.sleep(0)
+            continue
+        for _ in range(garbage_delay):
             await asyncio.sleep(0)
         coroutines.append(fly_garbage(
                 canvas,
@@ -211,6 +240,22 @@ async def fill_orbit_with_garbage(
                 garbage_frame=choice(garbage_frames),
                 speed=uniform(MIN_GARBAGE_SPEED, MAX_GARBAGE_SPEED)
             ))
+
+
+async def print_info(canvas):
+    last_phrase_year = None
+    while True:
+        draw_frame(canvas, 1, 1, f'YEAR: {year}')
+        if year in PHRASES.keys():
+            draw_frame(canvas, 3, 1, PHRASES[year])
+            last_phrase_year = year
+        elif last_phrase_year:
+            draw_frame(canvas, 3, 1, PHRASES[last_phrase_year], negative=True)
+
+        if DEBUG:
+            canvas.border()
+        canvas.refresh()
+        await asyncio.sleep(0)
 
 
 def draw(canvas):
@@ -240,11 +285,21 @@ def draw(canvas):
         max_column // 2,
         get_frames(SPACESHIP_FRAMES)
     ))
+    coroutines.append(year_count())
+
+    max_len_phrase = max([len(x) for x in PHRASES.values()])
+
+    coroutines.append(print_info(canvas.derwin(
+        5,
+        max_len_phrase+2,
+        max_row-5,
+        max_column-(max_len_phrase+2)
+    )))
+
     if DEBUG:
         coroutines.append(show_obstacles(
             canvas, obstacles
         ))
-
     while True:
         for coroutine in coroutines.copy():
             try:
