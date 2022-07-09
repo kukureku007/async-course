@@ -48,7 +48,6 @@ obstacles: List[Obstacle] = []
 obstacles_in_last_collisions: List[Obstacle] = []
 obstacles_in_last_collisions: set = set()
 year = DEBUG_YEAR if DEBUG else 1957
-loop = asyncio.get_event_loop()
 
 
 async def year_count():
@@ -138,7 +137,7 @@ async def animate_spaceship(
 
         draw_frame(canvas, current_row, current_column, frame)
         if action_fire and (year > 2019 or GOD_MODE):
-            loop.create_task(
+            asyncio.create_task(
                 fire(canvas, current_row, current_column + frame_columns // 2)
             )
         await asyncio.sleep(TIC_TIMEOUT)
@@ -155,7 +154,7 @@ async def animate_spaceship(
                     current_row + frame_rows // 2,
                     current_column + frame_columns // 2
                 )
-                loop.create_task(game_over(canvas))
+                asyncio.create_task(game_over(canvas))
                 return
 
 
@@ -223,7 +222,8 @@ async def fill_orbit_with_garbage(
             await asyncio.sleep(TIC_TIMEOUT)
             continue
         await asyncio.sleep(TIC_TIMEOUT * garbage_delay)
-        loop.create_task(fly_garbage(
+        # asyncio.create_task внутри себя получает текущий event_loop
+        asyncio.create_task(fly_garbage(
                 canvas,
                 column=randint(BORDERS, max_column-1-BORDERS),
                 garbage_frame=choice(garbage_frames),
@@ -260,6 +260,8 @@ def draw(canvas):
     canvas.nodelay(True)
     max_row, max_column = canvas.getmaxyx()
 
+    loop = asyncio.get_event_loop()
+
     for _ in range(STARS_NUM):
         loop.create_task(blink(
             canvas,
@@ -281,11 +283,21 @@ def draw(canvas):
         max_column // 2,
         get_frames(SPACESHIP_FRAMES)
     ))
-    loop.create_task(year_count())
+
+    # loop.create_task(coro) вернёт таск (футуру)
+    # которая будет выполняться в event_loop (поставлена в очередь)
+    task = loop.create_task(year_count())
+    # future2 = asyncio.ensure_future(future1)
+    # вернёт future2 которая будет future1
+    # и которая уже выполняется в event_loop
+    task2 = asyncio.ensure_future(task)
+    assert task is task2
 
     max_len_phrase = max([len(x) for x in PHRASES.values()])
 
-    loop.create_task(print_info(canvas.derwin(
+    # asyncio.ensure_future(coro)
+    # вернёт таск(футуру), которая будет выполняться в event_loop
+    asyncio.ensure_future(print_info(canvas.derwin(
         5,
         max_len_phrase+2,
         max_row-5,
